@@ -378,9 +378,9 @@ class Handler {
                 })
             }
 
-            if (!title && !subtitle && !body) {
-                body = 'Empty message'
-            }
+            // if (!title && !subtitle && !body) {
+            //     body = 'Empty message'
+            // }
 
             let sound = parameters.sound || undefined
             if (sound) {
