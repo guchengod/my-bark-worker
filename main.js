@@ -41,6 +41,59 @@ async function handleRequest(request, env, ctx) {
 
             return handler.info(searchParams)
         }
+        case "/alertmanager": {
+            if (request.method !== 'POST') {
+                return new Response('Method Not Allowed', {
+                    status: 405,
+                    headers: {
+                        'content-type': 'text/plain',
+                    }
+                });
+            }
+
+            // 验证 Basic Auth（如果需要）
+            if (!util.validateBasicAuth(request)) {
+                return new Response('Unauthorized', {
+                    status: 401,
+                    headers: {
+                        'content-type': 'text/plain',
+                        'WWW-Authenticate': 'Basic',
+                    }
+                });
+            }
+
+            try {
+                const contentType = request.headers.get('content-type') || '';
+                let requestBody = {};
+
+                if (contentType.includes('application/json')) {
+                    requestBody = await request.json();
+                } else if (contentType.includes('application/x-www-form-urlencoded')) {
+                    const formData = await request.formData();
+                    formData.forEach((value, key) => { requestBody[key] = value });
+                } else {
+                    return new Response('Unsupported Media Type', {
+                        status: 415,
+                        headers: {
+                            'content-type': 'text/plain',
+                        }
+                    });
+                }
+
+                return handler.alertmanager(requestBody);
+            } catch (error) {
+                return new Response(JSON.stringify({
+                    'code': 400,
+                    'message': `Bad Request: ${error.message}`,
+                    'timestamp': util.getTimestamp(),
+                }), {
+                    status: 400,
+                    headers: {
+                        'content-type': 'application/json',
+                    }
+                });
+            }
+        }
         default: {
             const pathParts = realPathname.split('/')
 
@@ -440,6 +493,92 @@ class Handler {
                 })
             }
         }
+
+        this.alertmanager = async (alertmanagerData) => {
+            try {
+                // 解析 Alertmanager 数据
+                const status = alertmanagerData.status || 'firing'; // firing/resolved
+                const alerts = alertmanagerData.alerts || [];
+                const groupLabels = alertmanagerData.groupLabels || {};
+                const commonLabels = alertmanagerData.commonLabels || {};
+                const commonAnnotations = alertmanagerData.commonAnnotations || {};
+
+                // 如果没有警报，返回成功但跳过处理
+                if (alerts.length === 0) {
+                    return new Response(JSON.stringify({
+                        'code': 200,
+                        'message': 'No alerts to process',
+                        'timestamp': util.getTimestamp(),
+                    }), {
+                        status: 200,
+                        headers: {
+                            'content-type': 'application/json',
+                        }
+                    });
+                }
+
+                // 处理每个警报
+                const results = await Promise.all(alerts.map(async (alert) => {
+                    // 构建推送内容
+                    const title = `[${status.toUpperCase()}] ${alert.labels?.alertname || 'Alert'}`;
+
+                    let body = '';
+                    if (alert.annotations?.description) {
+                        body += `${alert.annotations.description}\n\n`;
+                    }
+                    if (alert.annotations?.summary) {
+                        body += `Summary: ${alert.annotations.summary}\n`;
+                    }
+
+                    // 添加关键标签
+                    body += '\nLabels:\n';
+                    for (const [key, value] of Object.entries(alert.labels || {})) {
+                        if (key !== 'alertname') {
+                            body += `- ${key}: ${value}\n`;
+                        }
+                    }
+
+                    // 使用现有推送逻辑
+                    const pushResponse = await this.push({
+                        device_key: 'default_alert_device', // 替换为实际接收警报的设备key
+                        title: title,
+                        body: body.trim(),
+                        group: groupLabels.alertname || 'alertmanager',
+                        isArchive: '1'
+                    });
+
+                    return {
+                        fingerprint: alert.fingerprint,
+                        status: pushResponse.status,
+                        message: await pushResponse.text()
+                    };
+                }));
+
+                return new Response(JSON.stringify({
+                    'code': 200,
+                    'message': 'Alerts processed successfully',
+                    'data': results,
+                    'timestamp': util.getTimestamp(),
+                }), {
+                    status: 200,
+                    headers: {
+                        'content-type': 'application/json',
+                    }
+                });
+
+            } catch (error) {
+                return new Response(JSON.stringify({
+                    'code': 500,
+                    'message': `Error processing Alertmanager webhook: ${error.message}`,
+                    'timestamp': util.getTimestamp(),
+                }), {
+                    status: 500,
+                    headers: {
+                        'content-type': 'application/json',
+                    }
+                });
+            }
+        };
     }
 }
 
