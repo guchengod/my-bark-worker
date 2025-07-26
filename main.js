@@ -416,42 +416,42 @@ class Handler {
                 'iv': iv,
                 'image': image,
             }
-            return new Response((JSON.stringify(aps)))
-            // const apns = new APNs(db)
-            // const response = await apns.push(deviceToken, aps)
+    
+            const apns = new APNs(db)
+            const response = await apns.push(deviceToken, aps)
 
-            // if (response.status === 200) {
-            //     return new Response(JSON.stringify({
-            //         'code': 200,
-            //         'message': 'success',
-            //         'timestamp': util.getTimestamp(),
-            //     }), {
-            //         status: 200,
-            //         headers: {
-            //             'content-type': 'application/json',
-            //         }
-            //     })
-            // } else {
-            //     let message
-            //     const responseText = await response.text()
+            if (response.status === 200) {
+                return new Response(JSON.stringify({
+                    'code': 200,
+                    'message': 'success',
+                    'timestamp': util.getTimestamp(),
+                }), {
+                    status: 200,
+                    headers: {
+                        'content-type': 'application/json',
+                    }
+                })
+            } else {
+                let message
+                const responseText = await response.text()
                 
-            //     try {
-            //         message = JSON.parse(responseText).reason
-            //     } catch (err) {
-            //         message = responseText
-            //     }
+                try {
+                    message = JSON.parse(responseText).reason
+                } catch (err) {
+                    message = responseText
+                }
 
-            //     return new Response(JSON.stringify({
-            //         'code': response.status,
-            //         'message': `push failed: ${message}`,
-            //         'timestamp': util.getTimestamp(),
-            //     }), {
-            //         status: response.status,
-            //         headers: {
-            //             'content-type': 'application/json',
-            //         }
-            //     })
-            // }
+                return new Response(JSON.stringify({
+                    'code': response.status,
+                    'message': `push failed: ${message}`,
+                    'timestamp': util.getTimestamp(),
+                }), {
+                    status: response.status,
+                    headers: {
+                        'content-type': 'application/json',
+                    }
+                })
+            }
         }
 
         this.alertmanager = async (alertmanagerData) => {
