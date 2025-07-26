@@ -17,7 +17,6 @@ async function handleRequest(request, env, ctx) {
     const {searchParams, pathname} = new URL(request.url)
     const handler = new Handler(env)
     const realPathname = pathname.replace((new RegExp('^' + rootPath.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"))), '/')
-
     switch (realPathname) {
         case "/register": {
             return handler.register(searchParams)
@@ -41,45 +40,9 @@ async function handleRequest(request, env, ctx) {
 
             return handler.info(searchParams)
         }
-        case "/alertmanager": {
-            if (request.method !== 'POST') {
-                return new Response('Method Not Allowed', {
-                    status: 405,
-                    headers: {
-                        'content-type': 'text/plain',
-                    }
-                });
-            }
-
-            // 验证 Basic Auth（如果需要）
-            if (!util.validateBasicAuth(request)) {
-                return new Response('Unauthorized', {
-                    status: 401,
-                    headers: {
-                        'content-type': 'text/plain',
-                        'WWW-Authenticate': 'Basic',
-                    }
-                });
-            }
-
-            try {
-                let requestBody = await request.json();
-
-                return handler.alertmanager(requestBody);
-            } catch (error) {
-                return new Response(JSON.stringify({
-                    'code': 400,
-                    'message': `Bad Request: ${error.message}`,
-                    'timestamp': util.getTimestamp(),
-                }), {
-                    status: 400,
-                    headers: {
-                        'content-type': 'application/json',
-                    }
-                });
-            }
-        }
+        
         default: {
+
             const pathParts = realPathname.split('/')
 
             if (pathParts[1]) {
@@ -198,8 +161,13 @@ async function handleRequest(request, env, ctx) {
                         }
                     })
                 }
-
-                return handler.push(requestBody)
+                
+                if (pathParts[2] === "alertmanager"){
+                    return handler.alertmanager(requestBody)
+                }else {
+                    return handler.push(requestBody)
+                }
+                
             }
 
             return new Response(JSON.stringify({
@@ -448,42 +416,42 @@ class Handler {
                 'iv': iv,
                 'image': image,
             }
+            return new Response((JSON.stringify(aps)))
+            // const apns = new APNs(db)
+            // const response = await apns.push(deviceToken, aps)
 
-            const apns = new APNs(db)
-            const response = await apns.push(deviceToken, aps)
-
-            if (response.status === 200) {
-                return new Response(JSON.stringify({
-                    'code': 200,
-                    'message': 'success',
-                    'timestamp': util.getTimestamp(),
-                }), {
-                    status: 200,
-                    headers: {
-                        'content-type': 'application/json',
-                    }
-                })
-            } else {
-                let message
-                const responseText = await response.text()
+            // if (response.status === 200) {
+            //     return new Response(JSON.stringify({
+            //         'code': 200,
+            //         'message': 'success',
+            //         'timestamp': util.getTimestamp(),
+            //     }), {
+            //         status: 200,
+            //         headers: {
+            //             'content-type': 'application/json',
+            //         }
+            //     })
+            // } else {
+            //     let message
+            //     const responseText = await response.text()
                 
-                try {
-                    message = JSON.parse(responseText).reason
-                } catch (err) {
-                    message = responseText
-                }
+            //     try {
+            //         message = JSON.parse(responseText).reason
+            //     } catch (err) {
+            //         message = responseText
+            //     }
 
-                return new Response(JSON.stringify({
-                    'code': response.status,
-                    'message': `push failed: ${message}`,
-                    'timestamp': util.getTimestamp(),
-                }), {
-                    status: response.status,
-                    headers: {
-                        'content-type': 'application/json',
-                    }
-                })
-            }
+            //     return new Response(JSON.stringify({
+            //         'code': response.status,
+            //         'message': `push failed: ${message}`,
+            //         'timestamp': util.getTimestamp(),
+            //     }), {
+            //         status: response.status,
+            //         headers: {
+            //             'content-type': 'application/json',
+            //         }
+            //     })
+            // }
         }
 
         this.alertmanager = async (alertmanagerData) => {
@@ -548,14 +516,14 @@ class Handler {
                 if (status === 'resolved') {
                     body += `\nResolved: ${latestAlert.endsAt}`;
                 }
-
                 // 使用现有推送逻辑
                 return await this.push({
                     title: title,
                     subtitle: title,
                     body: body.trim(),
                     group: groupLabels.alertname || 'alertmanager',
-                    isArchive: '1'
+                    isArchive: '1',
+                    device_key: alertmanagerData.device_key
                 });
             } catch (error) {
                 return new Response(JSON.stringify({
