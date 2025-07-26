@@ -63,22 +63,7 @@ async function handleRequest(request, env, ctx) {
             }
 
             try {
-                const contentType = request.headers.get('content-type') || '';
-                let requestBody = {};
-
-                if (contentType.includes('application/json')) {
-                    requestBody = await request.json();
-                } else if (contentType.includes('application/x-www-form-urlencoded')) {
-                    const formData = await request.formData();
-                    formData.forEach((value, key) => { requestBody[key] = value });
-                } else {
-                    return new Response('Unsupported Media Type', {
-                        status: 415,
-                        headers: {
-                            'content-type': 'text/plain',
-                        }
-                    });
-                }
+                let requestBody = await request.json();
 
                 return handler.alertmanager(requestBody);
             } catch (error) {
